@@ -7,7 +7,7 @@ async function getAllBlogs(req, res){
         const blogs = await Blog.find();
         res.send(blogs);
     } catch (err) {
-        res.status(500).send(err);
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
 async function createBlogWithPost(req, res) {
@@ -44,7 +44,8 @@ async function getId(req, res){
 async function getBlogsByName(req, res){
     try {
         const author = req.params.author;
-        const tableauBlogs = await Blog.find({author: author});
+        const idsAuteurs = await findUserIdsByNameFragment(author);
+        const tableauBlogs = await Blog.find({author: {$in: idsAuteurs}});
         res.status(200).send(tableauBlogs);
     } catch (err) {
         res.status(500).send({message: "Erreur serveur", error: err.message});
@@ -74,7 +75,7 @@ async function updateBlog(req, res) {
         }
         res.status(200).send(updateBlog);
     } catch (err) {
-        res.status(500).send(err);
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
 
@@ -129,4 +130,84 @@ async function showComment(req, res) {
     }
 }
 
-export default { getAllBlogs, createBlogWithPost, getId, getBlogsByName, updateBlog, deleteBlog, addComment, showComment};
+async function findUserIdsByNameFragment(fragment) {
+    const users = await User.find({
+        $or: [
+            { nom: { $regex: fragment, $options: 'i' } },
+            { prenom: { $regex: fragment, $options: 'i' } }
+        ]
+    }, { _id: 1 });
+    return users.map(u => u._id);
+}
+
+async function searchBlogs(req, res) {
+    try {
+        const titleBlog = req.query.title;
+        const authorName = req.query.author;
+        const sortByParam = req.query.sortBy;
+        const orderParam = req.query.order;
+
+        const filter = {};
+
+        if (titleBlog) {
+            filter.title = { $regex: titleBlog, $options: 'i' };
+        }
+        if (authorName) {
+            const idsAuteurs = await findUserIdsByNameFragment(authorName);
+            filter.author = { $in: idsAuteurs };
+        }
+
+        const tableauBlogs = await Blog.find(filter);
+
+        if (sortByParam === 'title') {
+            tableauBlogs.sort((a, b) => a.title.localeCompare(b.title));
+        }
+        if (sortByParam === 'createdAt') {
+            tableauBlogs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        }
+        if (sortByParam === 'updatedAt') {
+            tableauBlogs.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
+        }
+        if (sortByParam === 'comments') {
+            tableauBlogs.sort((a, b) => a.comments.length - b.comments.length);
+        }
+        if (sortByParam === 'avgNote') {
+            tableauBlogs.sort((a, b) => {
+                const moyenneA = a.comments.reduce((total, c) => total + (c.note || 0), 0) / (a.comments.length || 1);
+                const moyenneB = b.comments.reduce((total, c) => total + (c.note || 0), 0) / (b.comments.length || 1);
+                return moyenneA - moyenneB;
+            });
+        }
+
+        if (orderParam === 'desc') {
+            tableauBlogs.reverse();
+        }
+
+        res.status(200).send(tableauBlogs);
+    } catch (err) {
+        res.status(500).send({ message: "Erreur serveur", error: err.message });
+    }
+}
+
+async function complexSearch(req, res) {
+    try {
+        const authorName = req.query.author;
+        const dateFrom = req.query.from;
+        const dateTo = req.query.to;
+        const commenterName = req.query.comments;
+
+        const authorIds = await findUserIdsByNameFragment(authorName);
+
+        const query = await Blog.find({
+            author: { $in: authorIds },
+            createdAt: { $gte: new Date(dateFrom), $lte: new Date(dateTo) },
+            comments: { $elemMatch: { user: { $regex: commenterName, $options: 'i' } } }
+        });
+
+        res.status(200).send(query);
+    } catch (err) {
+        res.status(500).send({ message: "Erreur serveur", error: err.message });
+    }
+}
+
+export default { getAllBlogs, createBlogWithPost, getId, getBlogsByName, updateBlog, deleteBlog, addComment, showComment, searchBlogs, complexSearch };
