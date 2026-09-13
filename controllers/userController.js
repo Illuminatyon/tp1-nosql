@@ -1,63 +1,65 @@
-import User from '../models/User.js';
+import User from '../models/user';
+import Blog from '../models/blog';
 
-async function createUser(req, res) {
-    // gérer les cas ou il manque des éléments
+async function createUser(req, res){
     try {
-        const userName = req.body.nom;
-        const userLastName = req.body.prenom;
-        const userEmail = req.body.email;
-        const userOnlineName = req.body.username;
-        const query = await User.insertOne({nom: userName, prenom: userLastName, email: userEmail, username: userOnlineName});
-        if(query){
-            res.status(200).send("Un utilisateur à été ajouté.");
+        const nomUser = req.body.nom;
+        const prenomUser = req.body.prenom;
+        const emailUser = req.body.email;
+        const usernameUser = req.body.username;
+
+        if(!nomUser || !prenomUser || !emailUser || !usernameUser){
+            res.status(404).send({message: "Il manque des données pour l'ajout d'un nouvel utilisateur."});
         }
-    } catch (err) {
-        res.status(500).send(err);
+        const query = await User.insertOne({nom: nomUser, prenom: prenomUser, email: emailUser, username: usernameUser});
+        if(!query){
+            res.status(500).send({message : "Erreur serveur.", error: err});
+        }
+        res.status(200).send(query);
+    } catch (err){
+        res.status(500).send({message: err});
     }
 }
 
-async function updateUser(req, res) {
-    // todo: même chose aussi ici, et faire la même pour le reste du projet par ailleurs
+async function updateUser(req, res){
     try {
-        const nomUpdate = req.body.nom;
-        const prenomUpdate = req.body.prenom;
-        const emailUpdate = req.body.email;
-        const usernameUpdate = req.body.username;
-        const query = await User.update({_id: id},{$set: {
-            nom: nomUpdate,
-            prenom: prenomUpdate,
-            email: emailUpdate,
-            username: usernameUpdate
-            }});
-        if(query){
-            res.status(200).send("Un utilisateur à été mis à jour.");
+        const idUserUpdate = req.params.id;
+
+        const nomUser = req.body.nom;
+        const prenomUser = req.body.prenom;
+        const email = req.body.email;
+        const usernameUser = req.body.password;
+
+        const query = await Blog.findByIdAndUpdate({_id: idUserUpdate}, {nom: nomUser, prenom: prenomUser, email: email, username: usernameUser}, {$new: true});
+        if(!query){
+            res.status(404).send("Le document est introuvable.");
         }
+        res.status(200).send(query);
     } catch (err) {
-        res.status(500).send(err);
+        res.status(500).send({message: err});
     }
 }
 
 async function showUsers(req, res){
     try {
-        const query = await User.find();
-        if(query){
-            res.status(200).send(query);
-        }
+        const query = await Blog.find();
+        res.status(200).send(query);
     } catch (err) {
-        res.status(500).send(err);
+        res.status(500).send({message: err});
     }
 }
 
-async function deleteUser(req, res) {
+async function deleteUser(req, res){
     try {
-        const idUser = req.params.id;
-        const query = await User.deleteOne({_id: idUser});
-        if(query){
-            res.status(200).send("Un utilisateur à été supprimé.");
+        const idUserDeleted = req.params.id;
+        const query = await Blog.findByIdAndDelete(idUserDeleted);
+        if(!query){
+            res.status(404).send("Le document est introuvable.");
         }
+        res.status(200).send(query);
     } catch (err) {
-        res.status(500).send(err);
+        res.status(500).send({message: err});
     }
 }
 
-export default { createUser, updateUser, showUsers, deleteUser};
+export default { createUser, updateUser, showUsers, deleteUser };
