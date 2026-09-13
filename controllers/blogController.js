@@ -22,7 +22,7 @@ async function createBlogWithPost(req, res) {
         if(!newBlog){
             return res.status(400).send("Erreur lors de la création du blog.");
         }
-        res.send(201).send(newBlog);
+        res.status(201).send(newBlog);
     } catch (err) {
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
@@ -45,9 +45,6 @@ async function getBlogsByName(req, res){
     try {
         const author = req.params.author;
         const tableauBlogs = await Blog.find({author: author});
-        if(!tableauBlogs){
-            return res.status(404).send("Aucun article trouvé pour cet auteur.");
-        }
         res.status(200).send(tableauBlogs);
     } catch (err) {
         res.status(500).send({message: "Erreur serveur", error: err.message});
@@ -85,7 +82,7 @@ async function deleteBlog(req, res){
     try {
         const idBlogDelete = req.params.id;
         const query = await Blog.deleteOne({_id: idBlogDelete});
-        if(!query){
+        if(query.deletedCount === 0){
             return res.status(404).send("Article introuvable.");
         }
         res.status(200).send("Un document à été supprimé.");
@@ -95,27 +92,26 @@ async function deleteBlog(req, res){
 }
 
 async function addComment(req, res) {
-    // TODO: problème pour l'ajout des commentaires
     try {
         const idBlog = req.params.id;
-        const userComment = req.body.comments.user;
-        const contentComment = req.body.comments.content;
-        const noteComment = req.body.note;
+        const user = req.body.user;
+        const content = req.body.content;
+        const note = req.body.note;
 
-        if(!userComment || !contentComment || !noteComment) {
+        if (!user || !content || note === undefined) {
             return res.status(400).send("Le nom de l'utilisateur, le contenu du commentaire et la note sont requis.");
         }
-        const updateBlog = await Blog.findByIdAndUpdate(
+        const updatedBlog = await Blog.findByIdAndUpdate(
             idBlog,
-            { $push: { comments: { user: userComment, content: contentComment, note: noteComment } } },
+            { $push: { comments: { user, content, note } } },
             { new: true }
-        )
-        if(!updateBlog){
+        );
+        if (!updatedBlog) {
             return res.status(404).send("Article introuvable.");
         }
-        res.status(201).send(updateBlog);
+        res.status(201).send(updatedBlog);
     } catch (err) {
-        res.status(500).send({message: "Erreur serveur", error: err.message});
+        res.status(500).send({ message: "Erreur serveur", error: err.message });
     }
 }
 
