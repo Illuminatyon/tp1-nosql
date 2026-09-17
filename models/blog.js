@@ -9,7 +9,7 @@ const blogSchema = new Schema({
     createdAt: { type: Date, default: Date.now },
     updatedAt: Date,
     comments: [{
-        user: { type: String, required: true },
+        user: { type: mongoose.Types.ObjectId, ref: 'User', required: true },
         content: { type: String, required: true },
         note: { type: Number, min: 0, max: 5 }
     }]
