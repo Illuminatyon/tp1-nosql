@@ -4,6 +4,8 @@ import authJwt from '../middlewares/authJwt.js';
 const router = express.Router()
 
 // Pour les utilisateurs
+// Création utilisateur
+router.post('/', userController.createUser);
 // Modification utilisateur
 router.put('/:id', authJwt.verifyToken, userController.updateUser);
 // Affichage de tous les utilisateurs

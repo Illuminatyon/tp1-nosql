@@ -2,52 +2,51 @@ import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-async function signup(req, res){
+async function signup(req, res) {
     try {
-        const nomUser = req.body.nom;
-        const prenomUser = req.body.prenom;
-        const emailUser = req.body.email;
-        const usernameUser = req.body.username;
-        const passwordUser = req.body.password;
+        const { nom, prenom, email, username, password } = req.body;
 
-        if(!nomUser || !prenomUser || !emailUser || !usernameUser || !passwordUser){
-            return res.status(400).send({message: "Il manque des données pour l'inscription."});
+        if (!nom || !prenom || !email || !username || !password) {
+            return res.status(400).send({ message: "Il manque des données pour l'inscription." });
         }
 
-        const passwordHash = await bcrypt.hash(passwordUser, 8);
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await User.create({ nom, prenom, email, username, password: passwordHash });
 
-        const query = await User.create({nom: nomUser, prenom: prenomUser, email: emailUser, username: usernameUser, password: passwordHash});
-        res.status(201).send({message: "Utilisateur créé avec succès.", id: query._id});
-    } catch (err){
-        res.status(500).send({message: "Erreur serveur", error: err.message});
+        res.status(201).send({ message: "Utilisateur créé avec succès.", id: user._id });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(409).send({ message: "Cet email ou nom d'utilisateur existe déjà." });
+        }
+        if (err.name === 'ValidationError') {
+            return res.status(400).send({ message: "Données d'inscription invalides.", error: err.message });
+        }
+        res.status(500).send({ message: "Erreur serveur", error: err.message });
     }
 }
 
-async function signin(req, res){
+async function signin(req, res) {
     try {
-        const usernameUser = req.body.username;
-        const passwordUser = req.body.password;
+        const { username, password } = req.body;
 
-        if(!usernameUser || !passwordUser){
-            return res.status(400).send({message: "Le nom d'utilisateur et le mot de passe sont requis."});
+        if (!username || !password) {
+            return res.status(400).send({ message: "Le nom d'utilisateur et le mot de passe sont requis." });
         }
 
-        const user = await User.findOne({username: usernameUser});
-        if(!user){
-            return res.status(404).send({message: "Utilisateur introuvable."});
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(401).send({ message: "Identifiants incorrects." });
         }
 
-        const motDePasseValide = await bcrypt.compare(passwordUser, user.password);
-        if(!motDePasseValide){
-            return res.status(401).send({message: "Mot de passe incorrect."});
+        const motDePasseValide = await bcrypt.compare(password, user.password);
+        if (!motDePasseValide) {
+            return res.status(401).send({ message: "Identifiants incorrects." });
         }
 
-        const JWT_SECRET = process.env.JWT_SECRET;
-        const token = jwt.sign({id: user._id}, JWT_SECRET, {expiresIn: 86400});
-
-        res.status(200).send({id: user._id, username: user.username, token: token});
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        res.status(200).send({ id: user._id, username: user.username, token });
     } catch (err) {
-        res.status(500).send({message: "Erreur serveur", error: err.message});
+        res.status(500).send({ message: "Erreur serveur", error: err.message });
     }
 }
 

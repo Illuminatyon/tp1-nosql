@@ -18,5 +18,5 @@ app.use('/blogs/', routeBlog);
 app.use('/auth/', routeAuth);
 
 app.listen(PORT, () =>
-	console.log("App started on port" + PORT)
+	console.log("App started on port " + PORT)
 );

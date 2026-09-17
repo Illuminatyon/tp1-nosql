@@ -3,20 +3,22 @@ import User from "../models/User.js";
 
 async function getAllBlogs(req, res){
     try {
-        console.log("Getting all blogs");
         const blogs = await Blog.find();
+        trierBlogs(blogs, req.query.sortBy, req.query.order);
         res.send(blogs);
     } catch (err) {
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
+
 async function createBlogWithPost(req, res) {
     try {
         const title = req.body.title;
-        const author = req.body.author;
+        const author = req.userId;
         const content = req.body.content;
-        if (!title || !author || !content) {
-            return res.status(400).send("Le titre, l'auteur et le contenu sont requis.");
+
+        if (!title || !content) {
+            return res.status(400).send("Le titre et le contenu sont requis.");
         }
         const newBlog = await Blog.create({title: title, author: author, content: content, createdAt: new Date(), updatedAt: new Date()});
         if(!newBlog){
@@ -24,6 +26,9 @@ async function createBlogWithPost(req, res) {
         }
         res.status(201).send(newBlog);
     } catch (err) {
+        if (err.name === 'ValidationError' || err.name === 'CastError') {
+            return res.status(400).send({message: "Les données de l'article sont invalides.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -37,6 +42,9 @@ async function getId(req, res){
         }
         res.status(200).send(document);
     } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant d'article invalide.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -44,10 +52,14 @@ async function getId(req, res){
 async function getBlogsByName(req, res){
     try {
         const author = req.params.author;
-        const idsAuteurs = await findUserIdsByNameFragment(author);
+        const idsAuteurs = await findBlogWithUser(author);
         const tableauBlogs = await Blog.find({author: {$in: idsAuteurs}});
+        trierBlogs(tableauBlogs, req.query.sortBy, req.query.order);
         res.status(200).send(tableauBlogs);
     } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Paramètre de recherche invalide.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -56,25 +68,20 @@ async function updateBlog(req, res) {
     try {
         const idUpdate = req.params.id;
 
-        const newTitle = req.body.title;
-        const newAuthor = req.body.author;
-        const newContent = req.body.content;
+        const updateFields = { updatedAt: new Date() };
+        if (req.body.title) updateFields.title = req.body.title;
+        if (req.body.author) updateFields.author = req.body.author;
+        if (req.body.content) updateFields.content = req.body.content;
 
-        if(newTitle){
-            await Blog.updateOne({_id: idUpdate},{$set: {title: newTitle, updatedAt: new Date()}});
-        }
-        if(newAuthor){
-            await Blog.updateOne({_id: idUpdate}, {$set: {author: newAuthor, updatedAt: new Date()}});
-        }
-        if(newContent){
-            await Blog.updateOne({_id: idUpdate},{$set: {content: newContent, updatedAt: new Date()}});
-        }
-        const updateBlog = await Blog.findByIdAndUpdate(idUpdate, {$set: {title: newTitle, author: newAuthor, content: newContent, updatedAt: new Date()}}, {new: true});
-        if(!updateBlog){
+        const updatedBlog = await Blog.findByIdAndUpdate(idUpdate, {$set: updateFields}, {new: true, runValidators: true});
+        if(!updatedBlog){
             return res.status(404).send("Article introuvable.");
         }
-        res.status(200).send(updateBlog);
+        res.status(200).send(updatedBlog);
     } catch (err) {
+        if (err.name === 'ValidationError' || err.name === 'CastError') {
+            return res.status(400).send({message: "Les données de modification sont invalides.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -88,6 +95,9 @@ async function deleteBlog(req, res){
         }
         res.status(200).send("Un document à été supprimé.");
     } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant d'article invalide.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -105,17 +115,19 @@ async function addComment(req, res) {
         const updatedBlog = await Blog.findByIdAndUpdate(
             idBlog,
             { $push: { comments: { user, content, note } } },
-            { new: true }
+            { new: true, runValidators: true }
         );
         if (!updatedBlog) {
             return res.status(404).send("Article introuvable.");
         }
         res.status(201).send(updatedBlog);
     } catch (err) {
-        res.status(500).send({ message: "Erreur serveur", error: err.message });
+        if (err.name === 'ValidationError' || err.name === 'CastError') {
+            return res.status(400).send({message: "Les données du commentaire sont invalides.", error: err.message});
+        }
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
-
 
 async function showComment(req, res) {
     try {
@@ -126,18 +138,48 @@ async function showComment(req, res) {
         }
         res.status(200).send(blog.comments);
     } catch (err) {
-        res.status(500).send({ message: "Erreur serveur", error: err.message });
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant d'article invalide.", error: err.message});
+        }
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
 
-async function findUserIdsByNameFragment(fragment) {
+async function findBlogWithUser(fragment) {
     const users = await User.find({
         $or: [
             { nom: { $regex: fragment, $options: 'i' } },
-            { prenom: { $regex: fragment, $options: 'i' } }
+            { prenom: { $regex: fragment, $options: 'i' } },
+            { username: { $regex: fragment, $options: 'i' } }
         ]
     }, { _id: 1 });
     return users.map(u => u._id);
+}
+
+function trierBlogs(tableau, sortBy, order) {
+    if (sortBy === 'title') {
+        tableau.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    if (sortBy === 'createdAt') {
+        tableau.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }
+    if (sortBy === 'updatedAt') {
+        tableau.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
+    }
+    if (sortBy === 'comments') {
+        tableau.sort((a, b) => a.comments.length - b.comments.length);
+    }
+    if (sortBy === 'avgNote') {
+        tableau.sort((a, b) => {
+            const moyenneA = a.comments.reduce((total, c) => total + (c.note || 0), 0) / (a.comments.length || 1);
+            const moyenneB = b.comments.reduce((total, c) => total + (c.note || 0), 0) / (b.comments.length || 1);
+            return moyenneA - moyenneB;
+        });
+    }
+    if (order === 'desc') {
+        tableau.reverse();
+    }
+    return tableau;
 }
 
 async function searchBlogs(req, res) {
@@ -153,39 +195,17 @@ async function searchBlogs(req, res) {
             filter.title = { $regex: titleBlog, $options: 'i' };
         }
         if (authorName) {
-            const idsAuteurs = await findUserIdsByNameFragment(authorName);
+            const idsAuteurs = await findBlogWithUser(authorName);
             filter.author = { $in: idsAuteurs };
         }
-
         const tableauBlogs = await Blog.find(filter);
-
-        if (sortByParam === 'title') {
-            tableauBlogs.sort((a, b) => a.title.localeCompare(b.title));
-        }
-        if (sortByParam === 'createdAt') {
-            tableauBlogs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        }
-        if (sortByParam === 'updatedAt') {
-            tableauBlogs.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
-        }
-        if (sortByParam === 'comments') {
-            tableauBlogs.sort((a, b) => a.comments.length - b.comments.length);
-        }
-        if (sortByParam === 'avgNote') {
-            tableauBlogs.sort((a, b) => {
-                const moyenneA = a.comments.reduce((total, c) => total + (c.note || 0), 0) / (a.comments.length || 1);
-                const moyenneB = b.comments.reduce((total, c) => total + (c.note || 0), 0) / (b.comments.length || 1);
-                return moyenneA - moyenneB;
-            });
-        }
-
-        if (orderParam === 'desc') {
-            tableauBlogs.reverse();
-        }
-
+        trierBlogs(tableauBlogs, sortByParam, orderParam);
         res.status(200).send(tableauBlogs);
     } catch (err) {
-        res.status(500).send({ message: "Erreur serveur", error: err.message });
+        if (err.name === 'CastError' || err.name === 'ValidationError') {
+            return res.status(400).send({message: "Paramètres de recherche invalides.", error: err.message});
+        }
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
 
@@ -196,7 +216,11 @@ async function complexSearch(req, res) {
         const dateTo = req.query.to;
         const commenterName = req.query.comments;
 
-        const authorIds = await findUserIdsByNameFragment(authorName);
+        if (!authorName || !dateFrom || !dateTo || !commenterName) {
+            return res.status(400).send({ message: "Les paramètres author, from, to et comments sont requis." });
+        }
+
+        const authorIds = await findBlogWithUser(authorName);
 
         const query = await Blog.find({
             author: { $in: authorIds },
@@ -206,7 +230,10 @@ async function complexSearch(req, res) {
 
         res.status(200).send(query);
     } catch (err) {
-        res.status(500).send({ message: "Erreur serveur", error: err.message });
+        if (err.name === 'CastError' || err.name === 'ValidationError') {
+            return res.status(400).send({message: "Paramètres de recherche invalides.", error: err.message});
+        }
+        res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
 

@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Blog from "../models/blog.js";
+import bcrypt from 'bcryptjs';
 
 async function createUser(req, res){
     try {
@@ -7,13 +8,27 @@ async function createUser(req, res){
         const prenomUser = req.body.prenom;
         const emailUser = req.body.email;
         const usernameUser = req.body.username;
+        const passwordUser = req.body.password;
 
-        if(!nomUser || !prenomUser || !emailUser || !usernameUser){
+        if(!nomUser || !prenomUser || !emailUser || !usernameUser || !passwordUser){
             return res.status(400).send({message: "Il manque des données pour l'ajout d'un nouvel utilisateur."});
         }
-        const query = await User.create({nom: nomUser, prenom: prenomUser, email: emailUser, username: usernameUser});
+
+        const passwordHash = await bcrypt.hash(passwordUser, 8);
+
+        if (typeof passwordUser !== 'string' || passwordUser.length < 6) {
+            return res.status(400).send({message: "Le mot de passe doit faire au moins 6 caractères."});
+        }
+
+        const query = await User.create({nom: nomUser, prenom: prenomUser, email: emailUser, username: usernameUser, password: passwordHash});
         res.status(201).send(query);
     } catch (err){
+        if (err.code === 11000) {
+            return res.status(409).send({message: "L'email ou le nom d'utilisateur existe déjà."});
+        }
+        if (err.name === 'ValidationError') {
+            return res.status(400).send({message: "Données d'utilisateur invalides.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -28,25 +43,23 @@ async function updateUser(req, res){
         const usernameUser = req.body.username;
 
         const updateFields = {};
-        if (nomUser){
-            updateFields.nom = nomUser;
-        }
-        if (prenomUser) {
-            updateFields.prenom = prenomUser;
-        }
-        if (email) {
-            updateFields.email = email;
-        }
-        if (usernameUser) {
-            updateFields.username = usernameUser;
-        }
+        if (nomUser) updateFields.nom = nomUser;
+        if (prenomUser) updateFields.prenom = prenomUser;
+        if (email) updateFields.email = email;
+        if (usernameUser) updateFields.username = usernameUser;
 
-        const query = await User.findByIdAndUpdate(idUserUpdate, {$set: updateFields}, {new: true});
+        const query = await User.findByIdAndUpdate(idUserUpdate, {$set: updateFields}, {new: true, runValidators: true});
         if(!query){
             return res.status(404).send("Le document est introuvable.");
         }
         res.status(200).send(query);
     } catch (err) {
+        if (err.code === 11000) {
+            return res.status(409).send({message: "L'email ou le nom d'utilisateur existe déjà."});
+        }
+        if (err.name === 'ValidationError' || err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant ou données de modification invalides.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -56,7 +69,7 @@ async function showUsers(req, res){
         const sortByParam = req.query.sortBy;
         const orderParam = req.query.order;
 
-        const query = await User.find();
+        const query = await User.find().select('-password');
 
         if (sortByParam === 'nom') {
             query.sort((a, b) => a.nom.localeCompare(b.nom));
@@ -108,6 +121,9 @@ async function deleteUser(req, res){
         }
         res.status(200).send(query);
     } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant utilisateur invalide.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
@@ -133,9 +149,11 @@ async function commentsUser(req, res){
 
         res.status(200).send(comments);
     } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).send({message: "Identifiant utilisateur invalide.", error: err.message});
+        }
         res.status(500).send({message: "Erreur serveur", error: err.message});
     }
 }
-
 
 export default { createUser, updateUser, showUsers, deleteUser, commentsUser};
