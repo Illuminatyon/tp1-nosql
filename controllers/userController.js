@@ -14,11 +14,11 @@ async function createUser(req, res){
             return res.status(400).send({message: "Il manque des données pour l'ajout d'un nouvel utilisateur."});
         }
 
-        const passwordHash = await bcrypt.hash(passwordUser, 8);
-
         if (typeof passwordUser !== 'string' || passwordUser.length < 6) {
             return res.status(400).send({message: "Le mot de passe doit faire au moins 6 caractères."});
         }
+
+        const passwordHash = await bcrypt.hash(passwordUser, 8);
 
         const query = await User.create({nom: nomUser, prenom: prenomUser, email: emailUser, username: usernameUser, password: passwordHash});
         res.status(201).send(query);
@@ -85,7 +85,7 @@ async function showUsers(req, res){
                 let nombreCommentaires = 0;
                 for (const blog of tableauBlogs) {
                     for (const comment of blog.comments) {
-                        if (comment.user === user.username) {
+                        if (comment.user.equals(user._id)) {
                             nombreCommentaires++;
                         }
                     }
@@ -132,18 +132,18 @@ async function commentsUser(req, res){
     try {
         const idUser = req.params.id;
 
-        const user = await User.findById(idUser, { username: 1 });
+        const user = await User.findById(idUser);
         if (!user) {
             return res.status(404).send({ message: "Utilisateur introuvable." });
         }
         const blogs = await Blog.find(
-            { "comments.user": user.username },
+            { "comments.user": idUser },
             { title: 1, comments: 1 }
         );
 
         const comments = blogs.flatMap(blog =>
             blog.comments
-                .filter(c => c.user === user.username)
+                .filter(c => c.user.equals(user._id))
                 .map(c => ({ blogId: blog._id, blogTitle: blog.title, content: c.content, note: c.note }))
         );
 

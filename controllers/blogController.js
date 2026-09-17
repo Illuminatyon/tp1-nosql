@@ -105,12 +105,12 @@ async function deleteBlog(req, res){
 async function addComment(req, res) {
     try {
         const idBlog = req.params.id;
-        const user = req.body.user;
+        const user = req.userId;
         const content = req.body.content;
         const note = req.body.note;
 
-        if (!user || !content || note === undefined) {
-            return res.status(400).send("Le nom de l'utilisateur, le contenu du commentaire et la note sont requis.");
+        if (!content || note === undefined) {
+            return res.status(400).send("Le contenu du commentaire et la note sont requis.");
         }
         const updatedBlog = await Blog.findByIdAndUpdate(
             idBlog,
@@ -132,7 +132,8 @@ async function addComment(req, res) {
 async function showComment(req, res) {
     try {
         const id = req.params.id;
-        const blog = await Blog.findById(id, { comments: 1, _id: 0 });
+        const blog = await Blog.findById(id, { comments: 1, _id: 0 })
+            .populate('comments.user', 'nom prenom username');
         if (!blog) {
             return res.status(404).send({ message: "Article introuvable." });
         }
@@ -221,11 +222,12 @@ async function complexSearch(req, res) {
         }
 
         const authorIds = await findBlogWithUser(authorName);
+        const commenterIds = await findBlogWithUser(commenterName);
 
         const query = await Blog.find({
             author: { $in: authorIds },
             createdAt: { $gte: new Date(dateFrom), $lte: new Date(dateTo) },
-            comments: { $elemMatch: { user: { $regex: commenterName, $options: 'i' } } }
+            comments: { $elemMatch: { user: { $in: commenterIds } } }
         });
 
         res.status(200).send(query);
