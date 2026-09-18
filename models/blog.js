@@ -13,7 +13,7 @@ const blogSchema = new Schema({
         content: { type: String, required: true },
         note: { type: Number, min: 0, max: 5 }
     }]
-});
+})
 
 const Blog = model('Blog', blogSchema);
 
