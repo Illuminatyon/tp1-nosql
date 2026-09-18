@@ -24,7 +24,7 @@ const userSchema = new Schema({
         minlength: [6, "Le mot de passe doit faire au moins 6 caractères."]
     },
     createdAt: { type: Date, default: Date.now }
-});
+})
 
 const User = model('User', userSchema);
 
